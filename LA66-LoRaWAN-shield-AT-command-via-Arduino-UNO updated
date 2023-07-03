@@ -1,0 +1,81 @@
+#include <SoftwareSerial.h>
+
+String inputString = "";      // a String to hold incoming data
+bool stringComplete = false;  // whether the string is complete
+bool voltageState = false;    // stores the current voltage state
+unsigned long lastChecked = 0; // stores the time the voltage was last checked
+const unsigned long checkInterval = 30000; // interval between voltage checks in milliseconds
+
+SoftwareSerial LA66_serial_port(10, 11);    // Arduino RX, TX ,
+
+const int voltagePin = A5; // analog input pin for voltage measurement
+
+void setup() {
+  // initialize serial:
+  LA66_serial_port.begin(9600);
+  Serial.begin(9600);
+  
+  // reserve 200 bytes for the inputString:
+  inputString.reserve(200);
+}
+
+void loop() {
+  // check if it's time to check the voltage
+  if (millis() - lastChecked >= checkInterval) {
+    // update lastChecked time
+    lastChecked = millis();
+    
+    // read the voltage from A5 input
+    float voltage = analogRead(voltagePin) * (5.0 / 1023.0);
+    
+    // check if voltage is greater than 3 volts
+    if (voltage >= 3 && !voltageState) {
+      // voltage has changed to high state, send "A" message
+      voltageState = true;
+      LA66_serial_port.println("AT+SENDB=0,10,1,00"); // replace "412F" with the base64 encoded "A" message
+       Serial.println();
+       Serial.println("AA");
+    } else if (voltage < 3 && voltageState) {
+      // voltage has changed to low state, send "B" message
+      voltageState = false;
+      LA66_serial_port.println("AT+SENDB=0,10,1,01"); // replace "422F" with the base64 encoded "B" message
+       Serial.println();
+       Serial.println("AQ");
+    }
+  }
+
+  
+    while ( LA66_serial_port.available()) {
+    // get the new byte:
+    char inChar = (char) LA66_serial_port.read();
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a newline, set a flag so the main loop can
+    // do something about it:
+    if (inChar == '\n' || inChar == '\r') {
+      stringComplete = true;
+    }
+  }
+
+    while ( Serial.available()) {
+    // get the new byte:
+    char inChar = (char) Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a newline, set a flag so the main loop can
+    // do something about it:
+    if (inChar == '\n' || inChar == '\r') {
+      LA66_serial_port.print(inputString);
+      inputString = "\0";
+    }
+  }
+  
+    // print the string when a newline arrives:
+    if (stringComplete) {
+    Serial.print(inputString);
+    
+    // clear the string:
+    inputString = "\0";
+    stringComplete = false;
+  }
+}
